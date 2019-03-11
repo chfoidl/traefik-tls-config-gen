@@ -186,21 +186,18 @@ func comparePrivateKeyToCert(publicKey PublicKey, privateKeys *[]PublicKey, c ch
 
 	for _, privateKey := range *privateKeys {
 		if bytes.Compare(publicKey.block, privateKey.block) == 0 {
-			certPath, err := filepath.Abs(publicKey.path)
-			keyPath, err := filepath.Abs(privateKey.path)
-			if err != nil {
-				log.Println("ERROR: Could not get absolute path for keypair: " + publicKey.path)
-			} else {
-				log.Println("Valid pair: " + filepath.Base(publicKey.path) + " + " + filepath.Base(privateKey.path))
+			certPath := publicKey.path
+			keyPath := privateKey.path
 
-				c <- KeyPairResult{
-					res: KeyPair{
-						cert:     publicKey.cert,
-						certPath: certPath,
-						keyPath:  keyPath,
-					},
-					err: nil,
-				}
+			log.Println("Valid pair: " + filepath.Base(publicKey.path) + " + " + filepath.Base(privateKey.path))
+
+			c <- KeyPairResult{
+				res: KeyPair{
+					cert:     publicKey.cert,
+					certPath: certPath,
+					keyPath:  keyPath,
+				},
+				err: nil,
 			}
 
 			return
@@ -257,7 +254,7 @@ func getValidCerts(files []string) []KeyPair {
 	return checkPairs(&public, &private)
 }
 
-func writeTraefikConfigFile(pairs []KeyPair, outFile string) {
+func writeTraefikConfigFile(pairs []KeyPair, outFile string, pathPrefix string) {
 	log.Println("Found " + strconv.Itoa(len(pairs)) + " valid keypairs!")
 	log.Println("Writing config to " + outFile + "...")
 
@@ -266,11 +263,14 @@ func writeTraefikConfigFile(pairs []KeyPair, outFile string) {
 	buf.Write([]byte(ConfigHeader + "\n\n"))
 
 	for _, pair := range pairs {
+		certPath := filepath.Join(pathPrefix, pair.certPath)
+		keyPath := filepath.Join(pathPrefix, pair.keyPath)
+
 		buf.Write([]byte("[[tls]]\n"))
 		buf.Write([]byte("  entryPoints = [\"https\"]\n"))
 		buf.Write([]byte("  [tls.certificate]\n"))
-		buf.Write([]byte("    certFile = \"" + pair.certPath + "\"\n"))
-		buf.Write([]byte("    keyFile = \"" + pair.keyPath + "\"\n"))
+		buf.Write([]byte("    certFile = \"" + certPath + "\"\n"))
+		buf.Write([]byte("    keyFile = \"" + keyPath + "\"\n"))
 		buf.Write([]byte("\n"))
 	}
 
@@ -304,7 +304,7 @@ func run(c *cli.Context) {
 	log.Println("Searching for certificates and private keys...")
 
 	pairs := getValidCerts(files)
-	writeTraefikConfigFile(pairs, c.String("out"))
+	writeTraefikConfigFile(pairs, c.String("out"), c.String("path-prefix"))
 }
 
 func main() {
@@ -319,6 +319,10 @@ func main() {
 		cli.StringFlag{
 			Name:  "out, o",
 			Usage: "Path of generated config file",
+		},
+		cli.StringFlag{
+			Name: "path-prefix, p",
+			Usage: "Path prefix for cert and key file paths in config file",
 		},
 	}
 
